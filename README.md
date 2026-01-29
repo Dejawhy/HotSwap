@@ -1,8 +1,8 @@
-# SwitchPilot
+# HotSwap
 
 Automatic OBS source switching for streamers who forget to switch scenes.
 
-SwitchPilot detects which application you're using and automatically updates your OBS video/audio capture sources to follow it. If you play multiple games in a stream and constantly forget to switch your game capture, this fixes that.
+HotSwap detects which application you're using and automatically updates your OBS video/audio capture sources to follow it. If you play multiple games in a stream and constantly forget to switch your game capture, this fixes that.
 
 ## Requirements
 
@@ -16,14 +16,14 @@ The app connects to OBS via WebSocket and monitors your foreground window. When 
 
 **Focus Lock**
 
-When SwitchPilot switches to a game, it locks onto that game. This prevents unwanted switching when you alt-tab to Discord, a browser, or another app. The lock releases when:
+When HotSwap switches to a game, it locks onto that game. This prevents unwanted switching when you alt-tab to Discord, a browser, or another app. The lock releases when:
 - The game closes
 - You toggle tracking off and back on (double-tap the hotkey)
 - You add a new game via the quick-add hotkey (the lock transfers to the new game)
 
 **Game Detection**
 
-SwitchPilot watches for gaming activity by checking if you're holding down movement keys (WASD by default). If you're actively using an app that isn't already in your whitelist or blacklist, it'll pop up a suggestion to add it. This is purely detection - no keystrokes are recorded or stored anywhere.
+HotSwap watches for gaming activity by checking if you're holding down movement keys (WASD by default). If you're actively using an app that isn't already in your whitelist or blacklist, it'll pop up a suggestion to add it. This is purely detection - no keystrokes are recorded or stored anywhere.
 
 The relevant code is in the `heuristic_loop` function if you want to verify:
 ```python
@@ -43,7 +43,7 @@ Some anti-cheat software (Vanguard, EasyAntiCheat, BattlEye) might flag keyboard
 
 1. Open OBS and enable the WebSocket server (Tools > WebSocket Server Settings)
 2. Set a password and note it down
-3. Run SwitchPilot
+3. Run HotSwap
 4. Go to the Settings tab and enter your WebSocket password
 5. Click Connect
 6. Select your video capture source and audio capture source from the dropdowns
@@ -52,31 +52,31 @@ Some anti-cheat software (Vanguard, EasyAntiCheat, BattlEye) might flag keyboard
 
 ## Auto-Launch with OBS
 
-SwitchPilot can automatically start when you open OBS.
+HotSwap can automatically start when you open OBS.
 
 **Automatic Install (Recommended)**
 
-1. In SwitchPilot, go to Settings
+1. In HotSwap, go to Settings
 2. Scroll to "OBS Integration"
 3. Click "Install OBS Script"
 4. Open OBS and go to Tools > Scripts
-5. Click the + button and select `SwitchPilot_Launcher.lua`
+5. Click the + button and select `HotSwap_Launcher.lua`
 
-The script will now launch SwitchPilot whenever OBS starts.
+The script will now launch HotSwap whenever OBS starts.
 
 **Manual Install (If automatic fails)**
 
 If the automatic install doesn't work (permissions issues, non-standard OBS install, etc.):
 
-1. Create a file called `SwitchPilot_Launcher.lua` with this content:
+1. Create a file called `HotSwap_Launcher.lua` with this content:
 
 ```lua
 obs = obslua
 
-local app_path = "C:\\path\\to\\SwitchPilot.exe"
+local app_path = "C:\\path\\to\\HotSwap.exe"
 
 function script_description()
-    return "Launches SwitchPilot when OBS starts."
+    return "Launches HotSwap when OBS starts."
 end
 
 function on_event(event)
@@ -90,17 +90,17 @@ function script_load(settings)
 end
 ```
 
-2. Replace the path with the actual path to SwitchPilot.exe (use double backslashes)
+2. Replace the path with the actual path to HotSwap.exe (use double backslashes)
 3. Save the file to `%APPDATA%\obs-studio\basic\scripts\`
 4. In OBS, go to Tools > Scripts and add the script
 
 ## Configuration
 
-All settings are saved to `switchpilot_config.json` in the same folder as the executable. This includes your auto-tracking toggle state, so if you leave it enabled when you close the app, it'll be enabled next time you open it.
+All settings are saved to `hotswap_config.json` in the same folder as the executable. This includes your auto-tracking toggle state, so if you leave it enabled when you close the app, it'll be enabled next time you open it.
 
 **Whitelist vs Blacklist**
 
-- If the whitelist is empty, SwitchPilot tracks everything except blacklisted apps
+- If the whitelist is empty, HotSwap tracks everything except blacklisted apps
 - If you add apps to the whitelist, it only tracks those specific apps
 - Common non-game apps (explorer, chrome, discord, etc.) are blacklisted by default
 
@@ -129,7 +129,7 @@ The WebSocket connection failed. Check that:
 
 **"Capture failed - try running as Admin"**
 
-Some games require admin privileges to capture. Right-click SwitchPilot and run as administrator.
+Some games require admin privileges to capture. Right-click HotSwap and run as administrator.
 
 **"Incorrect password"**
 
@@ -148,27 +148,27 @@ pip install customtkinter obsws-python keyboard psutil pywin32
 
 Run directly:
 ```
-python SwitchPilot.py
+python HotSwap.py
 ```
 
 Build executable:
 ```
 pip install pyinstaller
-pyinstaller SwitchPilot.spec
+pyinstaller HotSwap.spec
 ```
 
 The executable will be in the `dist` folder.
 
 ## Uninstalling
 
-SwitchPilot doesn't install anything to your system. To remove it:
+HotSwap doesn't install anything to your system. To remove it:
 
-1. Delete the SwitchPilot folder/files
-2. Delete `switchpilot_config.json` if it exists
+1. Delete the HotSwap folder/files
+2. Delete `hotswap_config.json` if it exists
 
 That's it. No registry entries, no leftover files elsewhere.
 
-Your OBS sources will keep working normally after removal - SwitchPilot only changes which window they capture, it doesn't modify OBS itself. Your sources will just stay pointed at whatever window they were last set to.
+Your OBS sources will keep working normally after removal - HotSwap only changes which window they capture, it doesn't modify OBS itself. Your sources will just stay pointed at whatever window they were last set to.
 
 ## Privacy
 

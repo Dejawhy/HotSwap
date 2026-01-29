@@ -33,7 +33,7 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-APP_NAME = "SwitchPilot"
+APP_NAME = "HotSwap"
 APP_VERSION = "1.0" # Bumped version
 
 # ... [Keep UI Configuration and Path constants exactly as they were] ...
@@ -64,7 +64,7 @@ FONT_BODY = ("Segoe UI", 16, "bold")
 FONT_SMALL = ("Segoe UI", 16, "bold")
 FONT_CAPTION = ("Segoe UI", 16, "bold")
 
-app_data_dir = os.path.join(os.environ['APPDATA'], "SwitchPilot")
+app_data_dir = os.path.join(os.environ['APPDATA'], "HotSwap")
 if not os.path.exists(app_data_dir):
     try:
         os.makedirs(app_data_dir)
@@ -134,9 +134,9 @@ class OverlayPopup:
     def _load_logo(self):
         try:
             if getattr(sys, 'frozen', False):
-                icon_path = os.path.join(sys._MEIPASS, "SwitchPilot.ico")
+                icon_path = os.path.join(sys._MEIPASS, "HotSwap.ico")
             else:
-                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SwitchPilot.ico")
+                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "HotSwap.ico")
 
             if os.path.exists(icon_path):
                 img = Image.open(icon_path)
@@ -199,7 +199,7 @@ class OverlayPopup:
         if self.logo_image:
             ctk.CTkLabel(frame, image=self.logo_image, text="").pack(pady=(20, 5), anchor="center")
 
-        ctk.CTkLabel(frame, text="SwitchPilot", font=("Segoe UI", 16, "bold"), text_color=COLOR_MUTED).pack(anchor="center")
+        ctk.CTkLabel(frame, text="HotSwap", font=("Segoe UI", 16, "bold"), text_color=COLOR_MUTED).pack(anchor="center")
         ctk.CTkLabel(frame, text=title, font=("Segoe UI", 28, "bold"), text_color=title_color).pack(pady=(0, 10), anchor="center")
         ctk.CTkLabel(frame, text=message, font=("Segoe UI", 36, "bold"), text_color="#FFFFFF", wraplength=600, justify="center").pack(pady=(0, 15), padx=40, anchor="center")
 
@@ -367,7 +367,7 @@ class Tooltip:
             self.tooltip_window = None
 
 
-class SwitchPilot(ctk.CTk):
+class HotSwap(ctk.CTk):
     # ... [Keep Init/Setup/UI methods exactly as they were] ...
     def __init__(self):
         super().__init__()
@@ -377,9 +377,9 @@ class SwitchPilot(ctk.CTk):
         self.attributes("-topmost", True)
         
         if getattr(sys, 'frozen', False):
-            self.icon_path = os.path.join(sys._MEIPASS, "SwitchPilot.ico")
+            self.icon_path = os.path.join(sys._MEIPASS, "HotSwap.ico")
         else:
-            self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SwitchPilot.ico")
+            self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "HotSwap.ico")
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
 
@@ -396,7 +396,7 @@ class SwitchPilot(ctk.CTk):
         self.temp_ignore_list = []
         self.locked_app = None
         self.overlay = OverlayPopup(self)
-        self.self_exe = "SwitchPilot.exe" if getattr(sys, 'frozen', False) else "python.exe"
+        self.self_exe = "HotSwap.exe" if getattr(sys, 'frozen', False) else "python.exe"
         self.last_render_skipped = 0
 
         self.demo_mode = False # Demo mode flag for testing
@@ -445,7 +445,7 @@ class SwitchPilot(ctk.CTk):
     # ... [Copy show_onboarding, _center_toplevel, hotkey registration methods from original] ...
     def show_onboarding(self):
         guide = ctk.CTkToplevel(self)
-        guide.title("Welcome to SwitchPilot")
+        guide.title("Welcome to HotSwap")
         guide.geometry("500x450")
         guide.resizable(False, False)
         if hasattr(self, 'icon_path') and os.path.exists(self.icon_path):
@@ -459,11 +459,11 @@ class SwitchPilot(ctk.CTk):
         frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         ctk.CTkLabel(frame, text="Let's Get Connected!", font=("Segoe UI", 24, "bold"), text_color=COLOR_PRIMARY).pack(pady=(20, 10))
-        steps = ["1. Open OBS Studio", "2. Go to Tools > WebSocket Server Settings", "3. Check 'Enable WebSocket server'", "4. Set a password (e.g. 1234)", "5. Enter that password in SwitchPilot Settings"]
+        steps = ["1. Open OBS Studio", "2. Go to Tools > WebSocket Server Settings", "3. Check 'Enable WebSocket server'", "4. Set a password (e.g. 1234)", "5. Enter that password in HotSwap Settings"]
         for step in steps:
             ctk.CTkLabel(frame, text=step, font=("Segoe UI", 16), text_color="#DDDDDD", anchor="w").pack(pady=5, padx=40, fill="x")
         
-        ctk.CTkLabel(frame, text="SwitchPilot needs this connection to\ncontrol your scenes automatically.", font=("Segoe UI", 14), text_color=COLOR_MUTED, justify="center").pack(pady=(20, 10))
+        ctk.CTkLabel(frame, text="HotSwap needs this connection to\ncontrol your scenes automatically.", font=("Segoe UI", 14), text_color=COLOR_MUTED, justify="center").pack(pady=(20, 10))
         
         warning_frame = ctk.CTkFrame(frame, fg_color=COLOR_DANGER_DARK, corner_radius=6)
         warning_frame.pack(pady=(5, 0), padx=20, fill="x")
@@ -698,7 +698,7 @@ class SwitchPilot(ctk.CTk):
         self.audio_source_var = ctk.StringVar(value="Select Audio Source...")
         self.audio_source_menu = ctk.CTkOptionMenu(aud_row, variable=self.audio_source_var, values=["Connect first..."], font=FONT_BODY, command=self._on_source_changed)
         self.audio_source_menu.pack(side="left", fill="x", expand=True, padx=(SPACE_SM, 0))
-        ctk.CTkLabel(self.src_grp, text="SwitchPilot controls these sources automatically.\nAvoid changing the Window setting in OBS Properties.", font=("Segoe UI", 12), text_color=COLOR_WARNING, wraplength=400, justify="left").pack(pady=(SPACE_SM, SPACE_XS), padx=SPACE_LG, anchor="w")
+        ctk.CTkLabel(self.src_grp, text="HotSwap controls these sources automatically.\nAvoid changing the Window setting in OBS Properties.", font=("Segoe UI", 12), text_color=COLOR_WARNING, wraplength=400, justify="left").pack(pady=(SPACE_SM, SPACE_XS), padx=SPACE_LG, anchor="w")
         ctk.CTkLabel(self.src_grp, text="").pack(pady=SPACE_XS)
 
         self.auto_grp = ctk.CTkFrame(self.scroll_settings, fg_color=COLOR_SURFACE, corner_radius=8)
@@ -881,7 +881,7 @@ class SwitchPilot(ctk.CTk):
         y = self.winfo_y() + (self.winfo_height() - 320) // 2
         notice.geometry(f"+{x}+{y}")
         ctk.CTkLabel(notice, text="Anti-Cheat Notice", font=("Segoe UI", 18, "bold")).pack(pady=(20, 10))
-        info_text = "Some competitive games (Valorant, FaceIt, etc.) use\naggressive anti-cheat systems.\n\nSwitchPilot only listens for real key presses and\ndoes not inject input or modify games.\n\nIf you play games with strict anti-cheat, you can\nenable Anti-Cheat Safe Mode to add games manually."
+        info_text = "Some competitive games (Valorant, FaceIt, etc.) use\naggressive anti-cheat systems.\n\nHotSwap only listens for real key presses and\ndoes not inject input or modify games.\n\nIf you play games with strict anti-cheat, you can\nenable Anti-Cheat Safe Mode to add games manually."
         ctk.CTkLabel(notice, text=info_text, font=FONT_BODY, justify="center").pack(pady=10, padx=20)
         btn_frame = ctk.CTkFrame(notice, fg_color="transparent")
         btn_frame.pack(pady=20)
@@ -991,14 +991,14 @@ class SwitchPilot(ctk.CTk):
             exe_path_escaped = exe_path.replace("\\", "\\\\")
             lua_script = f'''obs = obslua
 local app_path = "{exe_path_escaped}"
-function script_description() return "Launches SwitchPilot automatically when OBS starts.\\n\\nPath: " .. app_path end
-function on_event(event) if event == obs.OBS_FRONTEND_EVENT_FINISHED_LOADING then obs.script_log(obs.LOG_INFO, "SwitchPilot: Launching...") os.execute('start "" "' .. app_path .. '"') end end
+function script_description() return "Launches HotSwap automatically when OBS starts.\\n\\nPath: " .. app_path end
+function on_event(event) if event == obs.OBS_FRONTEND_EVENT_FINISHED_LOADING then obs.script_log(obs.LOG_INFO, "HotSwap: Launching...") os.execute('start "" "' .. app_path .. '"') end end
 function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 '''
             appdata = os.environ.get('APPDATA', '')
             obs_base = os.path.join(appdata, 'obs-studio', 'basic', 'scripts')
             if not os.path.exists(obs_base): os.makedirs(obs_base, exist_ok=True)
-            script_path = os.path.join(obs_base, 'SwitchPilot_Launcher.lua')
+            script_path = os.path.join(obs_base, 'HotSwap_Launcher.lua')
             with open(script_path, 'w') as f: f.write(lua_script)
             if not silent:
                 self.clipboard_clear()
@@ -1056,7 +1056,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 
         if not app_to_add:
             exe, _, _, _ = self.get_window_info()
-            if exe and exe not in self.blacklist and exe != self.self_exe and exe != "SwitchPilot.exe":
+            if exe and exe not in self.blacklist and exe != self.self_exe and exe != "HotSwap.exe":
                 app_to_add = exe
 
         if not app_to_add: return
@@ -1134,7 +1134,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                 if activity_timer > threshold:
                     exe, title, cls, _ = self.get_window_info()
 
-                    if not exe or exe == self.self_exe or exe == "SwitchPilot.exe":
+                    if not exe or exe == self.self_exe or exe == "HotSwap.exe":
                         time.sleep(0.1)
                         continue
                     
@@ -1512,7 +1512,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             exe, title, cls, window_monitor_handle = self.get_window_info()
             
             if exe:
-                if exe == self.self_exe or exe == "SwitchPilot.exe":
+                if exe == self.self_exe or exe == "HotSwap.exe":
                     time.sleep(1.5)
                     continue
 
@@ -1622,13 +1622,13 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                     try:
                         _, pid = win32process.GetWindowThreadProcessId(hwnd)
                         exe_name = psutil.Process(pid).name()
-                        if exe_name and exe_name != "SwitchPilot.exe" and title.strip():
+                        if exe_name and exe_name != "HotSwap.exe" and title.strip():
                             apps.append(f"{title} ({exe_name})")
                     except (psutil.NoSuchProcess, psutil.AccessDenied): pass
         try:
             win32gui.EnumWindows(enum_handler, None)
             apps.sort()
-            clean_apps = [a for a in apps if "SwitchPilot" not in a]
+            clean_apps = [a for a in apps if "HotSwap" not in a]
             if clean_apps:
                 combo_widget.configure(values=clean_apps)
                 combo_widget.set(clean_apps[0])
@@ -1727,7 +1727,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         except Exception as e: print(f"Error detecting monitors: {e}")
 
     def _hide_from_capture(self):
-        """Hide SwitchPilot from OBS/screen capture using Win32 display affinity."""
+        """Hide HotSwap from OBS/screen capture using Win32 display affinity."""
         try:
             hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
             if not hwnd:
@@ -1879,28 +1879,28 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 
 if __name__ == "__main__":
     # --- FIX 1: SINGLE INSTANCE LOCK ---
-    mutex_name = "SwitchPilot_SingleInstance_Mutex"
+    mutex_name = "HotSwap_SingleInstance_Mutex"
     mutex = win32event.CreateMutex(None, False, mutex_name)
     last_error = win32api.GetLastError()
 
     if last_error == winerror.ERROR_ALREADY_EXISTS:
         # Show alert hidden (not topmost) so it doesn't annoy if run silent, 
         # but robust enough to inform user.
-        ctypes.windll.user32.MessageBoxW(0, "SwitchPilot is already running!", "SwitchPilot", 0x40 | 0x1)
+        ctypes.windll.user32.MessageBoxW(0, "HotSwap is already running!", "HotSwap", 0x40 | 0x1)
         sys.exit(0)
 
-    log_file = os.path.join(app_data_dir, "switchpilot_debug.log")
+    log_file = os.path.join(app_data_dir, "hotswap_debug.log")
     if getattr(sys, 'frozen', False):
         sys.stdout = open(log_file, "w")
         sys.stderr = sys.stdout
 
-    print(f"--- SwitchPilot v{APP_VERSION} Log Started ---")
+    print(f"--- HotSwap v{APP_VERSION} Log Started ---")
     
-    app = SwitchPilot()
+    app = HotSwap()
     try:
         app.mainloop()
     except Exception as e:
         print(f"FATAL ERROR: {e}")
         import traceback
         traceback.print_exc()
-        ctypes.windll.user32.MessageBoxW(0, f"Critical Error:\n{e}\n\nCheck logs in Settings.", "SwitchPilot Crashed", 16)
+        ctypes.windll.user32.MessageBoxW(0, f"Critical Error:\n{e}\n\nCheck logs in Settings.", "HotSwap Crashed", 16)

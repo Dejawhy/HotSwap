@@ -14,6 +14,13 @@ SwitchPilot detects which application you're using and automatically updates you
 
 The app connects to OBS via WebSocket and monitors your foreground window. When you switch to a different application, it updates your designated video/audio sources to capture that window instead.
 
+**Focus Lock**
+
+When SwitchPilot switches to a game, it locks onto that game. This prevents unwanted switching when you alt-tab to Discord, a browser, or another app. The lock releases when:
+- The game closes
+- You toggle tracking off and back on (double-tap the hotkey)
+- You add a new game via the quick-add hotkey (the lock transfers to the new game)
+
 **Game Detection**
 
 SwitchPilot watches for gaming activity by checking if you're holding down movement keys (WASD by default). If you're actively using an app that isn't already in your whitelist or blacklist, it'll pop up a suggestion to add it. This is purely detection - no keystrokes are recorded or stored anywhere.
@@ -27,6 +34,10 @@ for key in self.detection_keys:
 ```
 
 That's it. It checks if keys are currently held, nothing more.
+
+**Anti-Cheat Games**
+
+Some anti-cheat software (Vanguard, EasyAntiCheat, BattlEye) might flag keyboard detection as suspicious. If you're playing games with aggressive anti-cheat, you can disable game detection in Settings. This disables the automatic "new game detected" feature, but tracking still works - you just need to add games to your whitelist manually.
 
 ## Setup
 
@@ -96,6 +107,15 @@ All settings are saved to `switchpilot_config.json` in the same folder as the ex
 **Activity Keys**
 
 The default keys for game detection are W, A, S, D. You can change these in Settings if your games use different controls.
+
+**Hotkeys**
+
+| Hotkey | Default | Action |
+|--------|---------|--------|
+| Quick-Add | F9 | Adds the detected game to whitelist and switches to it |
+| Toggle Tracking | F10 | Turns auto-tracking on/off (releases focus lock when off) |
+
+Both hotkeys can be changed in Settings.
 
 ## Common Issues
 

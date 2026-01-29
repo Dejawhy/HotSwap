@@ -429,6 +429,7 @@ class SwitchPilot(ctk.CTk):
         
         threading.Thread(target=self.install_obs_script, kwargs={'silent': True}, daemon=True).start()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.after(500, self._hide_from_capture)
         
         if self.game_detection_enabled:
             threading.Thread(target=self.heuristic_loop, daemon=True).start()
@@ -1724,6 +1725,16 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                 if display_names and self.monitor_var.get() == "Select Monitor":
                     self.monitor_var.set(display_names[0])
         except Exception as e: print(f"Error detecting monitors: {e}")
+
+    def _hide_from_capture(self):
+        """Hide SwitchPilot from OBS/screen capture using Win32 display affinity."""
+        try:
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                hwnd = self.winfo_id()
+            SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
+        except Exception as e:
+            print(f"[Cloak] Could not hide from capture: {e}")
 
     def toggle_pin(self):
         is_top = bool(self.attributes("-topmost"))

@@ -2,7 +2,10 @@
 build/
 dist/
 *.spec
-
+isbad.py
+override.py
+python/
+DEVLOG.md
 # Python
 __pycache__/
 *.py[cod]

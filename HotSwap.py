@@ -417,6 +417,7 @@ class HotSwap(ctk.CTk):
         self.current_scene_collection = None
         self.scene_collection_sources = {}
         self.audio_feedback_enabled = True
+        self.popup_notifications_enabled = True
         self.audio_volume = 0.5
         self.sound_detected_path = ""
         self.sound_switched_path = ""
@@ -467,7 +468,7 @@ class HotSwap(ctk.CTk):
         
         warning_frame = ctk.CTkFrame(frame, fg_color=COLOR_DANGER_DARK, corner_radius=6)
         warning_frame.pack(pady=(5, 0), padx=20, fill="x")
-        ctk.CTkLabel(warning_frame, text="BETA WARNING: This is v1.0.\nBugs are expected. Fly safe!", font=("Segoe UI", 12, "bold"), text_color="#FFDDDD").pack(pady=5)
+        ctk.CTkLabel(warning_frame, text="BETA WARNING: This is v1.0.\nBugs are expected. Happy swapping!", font=("Segoe UI", 12, "bold"), text_color="#FFDDDD").pack(pady=5)
         
         ctk.CTkButton(frame, text="I'm Ready!", font=("Segoe UI", 16, "bold"), height=40, fg_color=COLOR_SUCCESS, hover_color="#16A34A", command=guide.destroy).pack(pady=20)
 
@@ -500,10 +501,12 @@ class HotSwap(ctk.CTk):
         if self.demo_mode:
             # Visual feedback: Change title and play a sound
             self.title(f"{APP_NAME} v{APP_VERSION} [DEMO MODE]")
+            self._show_for_capture()
             winsound.MessageBeep(winsound.MB_ICONASTERISK)
-            print("!!! DEMO MODE ENABLED - OBS UPDATES DISABLED !!!")
+            print("!!! DEMO MODE ENABLED - OBS UPDATES DISABLED, VISIBLE TO CAPTURE !!!")
         else:
             self.title(f"{APP_NAME} v{APP_VERSION}")
+            self._hide_from_capture()
             winsound.MessageBeep(winsound.MB_OK)
             print("!!! DEMO MODE DISABLED - LIVE !!!")
 
@@ -540,8 +543,15 @@ class HotSwap(ctk.CTk):
         self.status_frame.pack(pady=SPACE_SM, padx=SPACE_MD, fill="x")
         header_row = ctk.CTkFrame(self.status_frame, fg_color="transparent")
         header_row.pack(fill="x")
-        self.lbl_title = ctk.CTkLabel(header_row, text=APP_NAME, font=FONT_TITLE, text_color=COLOR_PRIMARY)
-        self.lbl_title.pack(side="left")
+        try:
+            logo_path = resource_path("hotswaplogoapp.png")
+            logo_img = Image.open(logo_path)
+            self.header_logo = ctk.CTkImage(light_image=logo_img, dark_image=logo_img, size=(143, 38))
+            self.lbl_title = ctk.CTkLabel(header_row, image=self.header_logo, text="")
+            self.lbl_title.pack(side="left")
+        except Exception:
+            self.lbl_title = ctk.CTkLabel(header_row, text=APP_NAME, font=FONT_TITLE, text_color=COLOR_PRIMARY)
+            self.lbl_title.pack(side="left")
         self.lbl_version = ctk.CTkLabel(header_row, text=f"v{APP_VERSION}", font=FONT_CAPTION, text_color=COLOR_MUTED)
         self.lbl_version.pack(side="left", padx=SPACE_SM)
         ctk.CTkLabel(header_row, text="", width=10).pack(side="left", expand=True, fill="x")
@@ -581,12 +591,16 @@ class HotSwap(ctk.CTk):
         self.btn_ignore_always.pack(side="left", padx=SPACE_XS)
         self.ctrl_frame = ctk.CTkFrame(self.tab_dash, fg_color=COLOR_SURFACE, corner_radius=8)
         self.ctrl_frame.pack(pady=SPACE_MD, padx=SPACE_MD, fill="x")
-        self.lbl_ctrl_header = ctk.CTkLabel(self.ctrl_frame, text="Currently Tracking", font=FONT_CAPTION, text_color=COLOR_MUTED)
+        self.lbl_ctrl_header = ctk.CTkLabel(self.ctrl_frame, text="Currently Tracking", font=FONT_CAPTION, text_color="#FFFFFF")
         self.lbl_ctrl_header.pack(pady=(SPACE_MD, SPACE_XS))
         self.lbl_current_app = ctk.CTkLabel(self.ctrl_frame, text="Waiting...", font=FONT_HEADING, text_color=COLOR_PRIMARY)
         self.lbl_current_app.pack(pady=SPACE_XS)
-        self.switch_track = ctk.CTkSwitch(self.ctrl_frame, text="Enable Auto-Tracking", font=FONT_BODY, command=self.toggle_tracking)
-        self.switch_track.pack(pady=SPACE_MD)
+        self.track_row = ctk.CTkFrame(self.ctrl_frame, fg_color="transparent")
+        self.track_row.pack(pady=SPACE_MD)
+        self.switch_track = ctk.CTkSwitch(self.track_row, text="", width=60, switch_width=52, switch_height=28, command=self.toggle_tracking)
+        self.switch_track.pack(side="left")
+        self.lbl_track_status = ctk.CTkLabel(self.track_row, text="Tracking is OFF", font=("Segoe UI", 18, "bold"), text_color=COLOR_DANGER)
+        self.lbl_track_status.pack(side="left", padx=(SPACE_SM, 0))
         self.storage_frame = ctk.CTkFrame(self.tab_dash, fg_color=COLOR_SURFACE, corner_radius=8)
         self.storage_frame.pack(pady=SPACE_SM, padx=SPACE_MD, fill="x")
         self.lbl_path = ctk.CTkLabel(self.storage_frame, text="Recording path: Connect to OBS first", font=FONT_CAPTION, text_color=COLOR_MUTED)
@@ -720,6 +734,9 @@ class HotSwap(ctk.CTk):
         self.audio_feedback_var = ctk.BooleanVar(value=True)
         self.chk_audio_feedback = ctk.CTkCheckBox(self.auto_grp, text="Enable audio feedback", font=FONT_BODY, variable=self.audio_feedback_var, command=self._toggle_audio_feedback)
         self.chk_audio_feedback.pack(pady=SPACE_SM, padx=SPACE_LG, anchor="w")
+        self.popup_var = ctk.BooleanVar(value=True)
+        self.chk_popup = ctk.CTkCheckBox(self.auto_grp, text="Show popup notifications", font=FONT_BODY, variable=self.popup_var, command=self._toggle_popup_notifications)
+        self.chk_popup.pack(pady=SPACE_SM, padx=SPACE_LG, anchor="w")
 
         volume_row = ctk.CTkFrame(self.auto_grp, fg_color="transparent")
         volume_row.pack(pady=SPACE_XS, fill="x", padx=SPACE_LG)
@@ -899,6 +916,9 @@ class HotSwap(ctk.CTk):
         self.audio_feedback_enabled = self.audio_feedback_var.get()
         self.save_settings()
         if self.audio_feedback_enabled: self._play_sound("switched")
+    def _toggle_popup_notifications(self):
+        self.popup_notifications_enabled = self.popup_var.get()
+        self.save_settings()
     def _on_volume_change(self, value):
         self.audio_volume = float(value)
         self.lbl_volume_pct.configure(text=f"{int(self.audio_volume * 100)}%")
@@ -1005,7 +1025,6 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                 self.clipboard_append(script_path)
                 self.update()
                 self.lbl_install_status.configure(text="Path copied! Just press Ctrl+V in OBS.", text_color=COLOR_SUCCESS)
-                os.startfile(obs_base)
                 self.after(5000, lambda: self.lbl_install_status.configure(text="Tip: The file path is in your clipboard."))
         except Exception as e:
             if not silent: self._show_install_error(f"Install failed: {str(e)[:50]}")
@@ -1021,13 +1040,14 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             self.suggestion_frame.pack(before=self.ctrl_frame, pady=SPACE_MD, padx=SPACE_MD, fill="x")
             self.tabs.set("Dashboard")
             self._play_sound("detected")
-            self.overlay.show(
-                title="Game Detected",
-                message=exe_name,
-                hotkey=self.detection_hotkey,
-                duration=10000,
-                overlay_type=OverlayPopup.TYPE_GAME_DETECTED
-            )
+            if self.popup_notifications_enabled:
+                self.overlay.show(
+                    title="Game Detected",
+                    message=exe_name,
+                    hotkey=self.detection_hotkey,
+                    duration=10000,
+                    overlay_type=OverlayPopup.TYPE_GAME_DETECTED
+                )
 
     def hide_suggestion(self):
         self.suggestion_frame.pack_forget()
@@ -1050,8 +1070,17 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 
     def quick_add_suggestion(self):
         """UI PART: Sets the lock IMMEDIATELY to stop the loop from fighting."""
+        if not self.is_tracking:
+            return
+        if not self.obs_client:
+            self.lbl_current_app.configure(text="Connect to OBS first", text_color=COLOR_WARNING)
+            return
+        vid = self.video_source_var.get()
+        if not vid or "Select" in vid:
+            self.lbl_current_app.configure(text="Set Video Source in Settings", text_color=COLOR_WARNING)
+            return
         self.overlay.clear_queue()
-        
+
         app_to_add = self.suggested_app
 
         if not app_to_add:
@@ -1085,21 +1114,34 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         """WORKER PART: Updates OBS."""
         # Get fresh info
         current_exe, current_title, current_cls, _ = self.get_window_info()
-        
+
         target_title = current_title if (current_exe == app_to_add) else saved_title
         target_class = current_cls if (current_exe == app_to_add) else saved_class
 
+        # If we still don't have title/class, try waiting briefly and re-checking
+        if not target_title or not target_class:
+            time.sleep(0.5)
+            current_exe, current_title, current_cls, _ = self.get_window_info()
+            if current_exe == app_to_add:
+                target_title = current_title
+                target_class = current_cls
+
         if target_title and target_class:
             print(f"Quick Add worker switching to: {app_to_add}")
-            
+
             # Send command to OBS
             self.update_obs(app_to_add, target_title, target_class, is_new_switch=True)
-            
+
+            # Update dashboard
+            self.lbl_current_app.configure(text=f"{app_to_add} (Tracking)", text_color=COLOR_PRIMARY)
+
             # Reset timer so we don't double-check too soon
             self.last_switch_time = time.time()
-            
+
             # Play sound last, confirming OBS accepted the command
             self._play_sound("switched")
+        else:
+            print(f"Quick Add worker: Could not get window info for {app_to_add}")
             
     def _notify_user(self):
         try:
@@ -1236,6 +1278,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             self._pending_auto_tracking = False
             self.switch_track.select()
             self.is_tracking = True
+            self.lbl_track_status.configure(text="Tracking is ON", text_color=COLOR_SUCCESS)
+            self.lbl_current_app.configure(text="Scanning...", text_color=COLOR_PRIMARY)
             threading.Thread(target=self.tracking_loop, daemon=True).start()
 
     def refresh_sources(self):
@@ -1488,7 +1532,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                     diff = abs(canvas_ar - source_ar)
                     if diff > 0.1:
                         issue_type = "Ultrawide" if source_ar > canvas_ar else "Boxy (4:3)"
-                        self.overlay.show(title="Aspect Ratio Warning", message=f"Game is {issue_type}", hotkey="", duration=6000, overlay_type=OverlayPopup.TYPE_ASPECT_RATIO)
+                        if self.popup_notifications_enabled:
+                            self.overlay.show(title="Aspect Ratio Warning", message=f"Game is {issue_type}", hotkey="", duration=6000, overlay_type=OverlayPopup.TYPE_ASPECT_RATIO)
         except Exception: pass
 
     def _validate_hook(self, source_name):
@@ -1497,7 +1542,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             active = self.obs_client.get_source_active(source_name).video_active
             if not active:
                 self.lbl_current_app.configure(text="Capture failed - try running as Admin", text_color=COLOR_DANGER)
-                self.overlay.show(title="Capture Failed", message="Try running as Administrator", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_CAPTURE_FAILED)
+                if self.popup_notifications_enabled:
+                    self.overlay.show(title="Capture Failed", message="Try running as Administrator", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_CAPTURE_FAILED)
         except Exception: pass
 
     def tracking_loop(self):
@@ -1537,7 +1583,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 
                 if (exe.lower() in [g.lower() for g in self.anticheat_games] and not self.anticheat_suggested and self.game_detection_enabled):
                     self.anticheat_suggested = True
-                    self.overlay.show(title="Anti-Cheat Detected", message=f"{exe}\nConsider enabling Safe Mode", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_ASPECT_RATIO)
+                    if self.popup_notifications_enabled:
+                        self.overlay.show(title="Anti-Cheat Detected", message=f"{exe}\nConsider enabling Safe Mode", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_ASPECT_RATIO)
 
                 allowed = is_whitelisted
                 if not allowed and self.last_injected_exe: self.last_injected_exe = ""
@@ -1589,7 +1636,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             if diff > self.frame_drop_threshold:
                 self.lbl_alert.configure(text=f"Dropped {diff} frames!", text_color=COLOR_DANGER)
                 self.status_frame.configure(fg_color=COLOR_DANGER_DARK)
-                if not recently_switched and not alert_cooldown:
+                if not recently_switched and not alert_cooldown and self.popup_notifications_enabled:
                     self.overlay.show(title="Performance Warning", message=f"Dropped {diff} frames!", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_FRAME_DROP)
                     self.last_alert_time = now
             elif diff > 0:
@@ -1736,6 +1783,16 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         except Exception as e:
             print(f"[Cloak] Could not hide from capture: {e}")
 
+    def _show_for_capture(self):
+        """Make HotSwap visible to OBS/screen capture (for demo mode)."""
+        try:
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                hwnd = self.winfo_id()
+            SetWindowDisplayAffinity(hwnd, 0)
+        except Exception as e:
+            print(f"[Cloak] Could not show for capture: {e}")
+
     def toggle_pin(self):
         is_top = bool(self.attributes("-topmost"))
         new_state = not is_top
@@ -1764,6 +1821,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             "frame_drop_alerts_enabled": self.frame_drop_alerts_enabled,
             "disclaimer_accepted": self.disclaimer_accepted,
             "audio_feedback_enabled": self.audio_feedback_enabled,
+            "popup_notifications_enabled": self.popup_notifications_enabled,
             "audio_volume": self.audio_volume,
             "sound_detected_path": self.sound_detected_path,
             "sound_switched_path": self.sound_switched_path,
@@ -1821,6 +1879,9 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             if "audio_feedback_enabled" in data:
                 self.audio_feedback_enabled = data["audio_feedback_enabled"]
                 self.audio_feedback_var.set(self.audio_feedback_enabled)
+            if "popup_notifications_enabled" in data:
+                self.popup_notifications_enabled = data["popup_notifications_enabled"]
+                self.popup_var.set(self.popup_notifications_enabled)
             if "audio_volume" in data:
                 self.audio_volume = float(data["audio_volume"])
                 self.audio_volume_var.set(self.audio_volume)
@@ -1868,12 +1929,20 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                 self.lbl_current_app.configure(text="Connect to OBS first", text_color=COLOR_WARNING)
                 self.switch_track.deselect()
                 return
+            vid = self.video_source_var.get()
+            if not vid or "Select" in vid:
+                self.lbl_current_app.configure(text="Set Video Source in Settings", text_color=COLOR_WARNING)
+                self.switch_track.deselect()
+                return
             self._reset_detection_state()
             self.is_tracking = True
+            self.lbl_track_status.configure(text="Tracking is ON", text_color=COLOR_SUCCESS)
+            self.lbl_current_app.configure(text="Scanning...", text_color=COLOR_PRIMARY)
             threading.Thread(target=self.tracking_loop, daemon=True).start()
         else:
             self.is_tracking = False
             self._reset_detection_state()
+            self.lbl_track_status.configure(text="Tracking is OFF", text_color=COLOR_DANGER)
             self.lbl_current_app.configure(text="Paused", text_color=COLOR_MUTED)
             self.lbl_alert.configure(text="SYSTEM NORMAL", text_color=COLOR_MUTED)
 

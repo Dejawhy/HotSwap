@@ -1,8 +1,22 @@
 # HotSwap
 
-Automatic OBS source switching for streamers who forget to switch scenes.
+OBS does not warn you when your game capture fails, freezes, or points at the wrong window.
 
-HotSwap detects which application you're using and automatically updates your OBS video/audio capture sources to follow it. If you play multiple games in a stream and constantly forget to switch your game capture, this fixes that.
+If you alt-tab, launch a new game, or forget to switch scenes, OBS will happily keep streaming the wrong thing — often without any indication that something went wrong.
+
+HotSwap is a lightweight OBS assistant that detects when your active game changes and automatically updates your video/audio capture sources *while you're live*.
+
+This isn’t about “forgetting”.
+It’s about OBS providing no real-time feedback when capture silently fails.
+
+## Common OBS Problems This Solves
+
+- OBS keeps streaming the wrong game
+- Game Capture freezes without warning
+- Scene didn’t switch when launching a new game
+- Alt-tabbing breaks capture mid-stream
+- **Popups showing on stream:** HotSwap alerts are invisible to OBS capture
+- **Multi-Monitor confusion:** Alerts now appear on the correct monitor
 
 ## Requirements
 
@@ -23,17 +37,11 @@ When HotSwap switches to a game, it locks onto that game. This prevents unwanted
 
 **Game Detection**
 
-HotSwap watches for gaming activity by checking if you're holding down movement keys (WASD by default). If you're actively using an app that isn't already in your whitelist or blacklist, it'll pop up a suggestion to add it. This is purely detection - no keystrokes are recorded or stored anywhere.
+HotSwap watches for gaming activity by checking if you're holding down movement keys (WASD by default) or custom combinations (like Shift+W). If you're actively using an app that isn't already in your whitelist or blacklist, it'll pop up a suggestion to add it. This is purely detection - no keystrokes are recorded or stored anywhere.
 
-The relevant code is in the `heuristic_loop` function if you want to verify:
-```python
-for key in self.detection_keys:
-    if keyboard.is_pressed(key):
-        is_active = True
-        break
-```
+**Stream-Safe Overlays**
 
-That's it. It checks if keys are currently held, nothing more.
+All HotSwap popups (Game Detected, Frame Drops, etc.) use window affinity masking. This means **you** can see them on your screen, but **OBS cannot see them**. They will not appear on your stream, even if you are using Display Capture.
 
 **Anti-Cheat Games**
 
@@ -88,7 +96,6 @@ end
 function script_load(settings)
     obs.obs_frontend_add_event_callback(on_event)
 end
-```
 
 2. Replace the path with the actual path to HotSwap.exe (use double backslashes)
 3. Save the file to `%APPDATA%\obs-studio\basic\scripts\`
@@ -110,34 +117,42 @@ The default keys for game detection are W, A, S, D. You can change these in Sett
 
 **Hotkeys**
 
-| Hotkey | Default | Action |
-|--------|---------|--------|
-| Quick-Add | F9 | Adds the detected game to whitelist and switches to it |
-| Toggle Tracking | F10 | Turns auto-tracking on/off (releases focus lock when off) |
+Hotkey	        Default	    Action
+Quick-Add	        F9	    Adds the detected game to whitelist and switches to it
+Toggle Tracking	    F10	    Turns auto-tracking on/off (releases focus lock when off)
 
 Both hotkeys can be changed in Settings.
 
-## Common Issues
+Common Issues
+"Error: Port 4455 is closed"
 
-**"Connect to OBS first"**
+HotSwap cannot find the OBS WebSocket server.
 
-The WebSocket connection failed. Check that:
-- OBS is running
-- WebSocket server is enabled in OBS (Tools > WebSocket Server Settings)
-- The password matches
-- Port 4455 isn't blocked
+Ensure "Enable WebSocket server" is checked in OBS (Tools > WebSocket Server Settings).
 
-**"Capture failed - try running as Admin"**
+Ensure the port in OBS is set to 4455.
+
+"Capture failed - try running as Admin"
 
 Some games require admin privileges to capture. Right-click HotSwap and run as administrator.
 
-**"Incorrect password"**
 
-The WebSocket password doesn't match. Double-check it in OBS under Tools > WebSocket Server Settings.
+"Error: Incorrect WebSocket Password"
+
+The server was found, but the password failed. Double-check it in OBS under Tools > WebSocket Server Settings.
 
 **Source not switching**
 
 Make sure you've selected the correct video source in Settings. It should be a Window Capture or Game Capture source, not a Display Capture.
+
+
+"Error: Connection Timed Out"
+
+Something is blocking the connection (usually a firewall).
+
+Check your Windows Firewall or Antivirus settings.
+
+Ensure HotSwap.exe is allowed to communicate on localhost
 
 ## Building from Source
 

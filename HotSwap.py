@@ -12,6 +12,7 @@ import threading
 import time
 import json
 import os
+import socket
 import sys
 import keyboard
 import shutil
@@ -33,7 +34,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 APP_NAME = "HotSwap"
-APP_VERSION = "1.0" 
+APP_VERSION = "1.1.0" 
 
 
 ctk.set_appearance_mode("Dark")
@@ -144,26 +145,28 @@ class OverlayPopup:
         """Clears all pending popups. Use when user has taken action."""
         self.popup_queue.clear()
 
-    def show(self, title, message, hotkey="F9", duration=10000, overlay_type=None):
-        """Show the overlay popup, with deduplication logic."""
-        
-        # dupelication prevention logic
+    def show(self, title, message, hotkey="F9", duration=10000, overlay_type=None, monitor_handle=None):
+        # THREAD SAFETY FIX:
+        # If this is called from a background thread, force it to the main thread.
+        if threading.current_thread() is not threading.main_thread():
+            self.parent.after(0, lambda: self.show(title, message, hotkey, duration, overlay_type, monitor_handle))
+            return
+
+        # --- EXISTING LOGIC STARTS HERE ---
+        # Deduplication logic
         if self.popup is not None and self.current_message == message:
             return
 
         for item in self.popup_queue:
             if item['message'] == message:
                 return
-        # ----------------------------
 
-        # If a different popup is currently showing, queue this new one
+        # Queue if busy
         if self.popup is not None:
             self.popup_queue.append({
-                'title': title,
-                'message': message,
-                'hotkey': hotkey,
-                'duration': duration,
-                'overlay_type': overlay_type
+                'title': title, 'message': message, 'hotkey': hotkey,
+                'duration': duration, 'overlay_type': overlay_type,
+                'monitor_handle': monitor_handle
             })
             return
 
@@ -176,6 +179,7 @@ class OverlayPopup:
         self.popup.configure(fg_color="#000001")
         self.popup.attributes("-transparentcolor", "#000001")
 
+        # --- SETUP COLORS ---
         if overlay_type == self.TYPE_FRAME_DROP or overlay_type == self.TYPE_CAPTURE_FAILED:
             title_color = COLOR_DANGER
         elif overlay_type == self.TYPE_ASPECT_RATIO:
@@ -183,6 +187,7 @@ class OverlayPopup:
         else:
             title_color = COLOR_ACCENT
 
+        # --- DRAW UI ---
         frame = ctk.CTkFrame(self.popup, fg_color="#1a1a1a", corner_radius=20)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -207,13 +212,34 @@ class OverlayPopup:
 
         ctk.CTkLabel(frame, text=f"Auto-dismiss in {duration // 1000}s", font=("Segoe UI", 16, "bold"), text_color="#CDCF44").pack(pady=(0, 20), anchor="center")
 
+        # --- CALCULATE POSITION ---
         self.popup.update_idletasks()
-        screen_width = self.popup.winfo_screenwidth()
-        screen_height = self.popup.winfo_screenheight()
         popup_width = self.popup.winfo_reqwidth()
         popup_height = self.popup.winfo_reqheight()
-        x = screen_width - popup_width - 30
-        y = screen_height - popup_height - 80
+
+        x, y = 0, 0
+        positioned = False
+
+        if monitor_handle:
+            try:
+                # Get the Work Area (screen minus taskbar) for the specific monitor
+                mon_info = win32api.GetMonitorInfo(monitor_handle)
+                work_area = mon_info['Work'] # Tuple: (left, top, right, bottom)
+                
+                # Align to Bottom-Right of THAT monitor
+                x = work_area[2] - popup_width - 30
+                y = work_area[3] - popup_height - 30
+                positioned = True
+            except Exception as e:
+                print(f"Monitor positioning failed: {e}")
+        
+        if not positioned:
+            # Fallback to Primary Monitor
+            screen_width = self.popup.winfo_screenwidth()
+            screen_height = self.popup.winfo_screenheight()
+            x = screen_width - popup_width - 30
+            y = screen_height - popup_height - 80
+
         self.popup.geometry(f"+{x}+{y}")
         self.popup.attributes("-topmost", True)
         self.popup.attributes("-alpha", 0.95)
@@ -237,9 +263,16 @@ class OverlayPopup:
         try:
             hwnd = ctypes.windll.user32.GetParent(self.popup.winfo_id())
             if not hwnd: hwnd = self.popup.winfo_id()
+            
+            # 1. Existing Style Flags (Transparent, Click-through, No Taskbar)
             style = GetWindowLong(hwnd, GWL_EXSTYLE)
             new_style = style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
             SetWindowLong(hwnd, GWL_EXSTYLE, new_style)
+
+            # 2. NEW: Apply the Invisibility Cloak to the Popup
+            # WDA_EXCLUDEFROMCAPTURE = 0x00000011
+            SetWindowDisplayAffinity(hwnd, 0x00000011)
+            
         except Exception:
             pass
 
@@ -269,7 +302,8 @@ class OverlayPopup:
             message=popup_data['message'],
             hotkey=popup_data['hotkey'],
             duration=popup_data['duration'],
-            overlay_type=popup_data['overlay_type']
+            overlay_type=popup_data['overlay_type'],
+            monitor_handle=popup_data.get('monitor_handle') # Pass this
         )
 
 
@@ -373,6 +407,8 @@ class HotSwap(ctk.CTk):
         self.obs_client = None
         self.is_tracking = False
         self.last_injected_exe = ""
+        self.current_monitor_handle = None
+        self.session_alerts = {}
         self.last_obs_target = ""
         self.monitors = []
         self.monitor_var = ctk.StringVar(value="")
@@ -762,21 +798,25 @@ class HotSwap(ctk.CTk):
         self._create_slider_row(self.auto_grp, "Frame drop alert threshold:", "lbl_drop_val", "slider_drop", 5, 100, 19, self.frame_drop_threshold, self.update_drop_label, suffix="")
         ctk.CTkLabel(self.auto_grp, text="").pack(pady=SPACE_XS)
 
+        # --- NEW KEY GROUP UI ---
         self.key_grp = ctk.CTkFrame(self.scroll_settings, fg_color=COLOR_SURFACE, corner_radius=8)
         self.key_grp.pack(pady=SPACE_SM, padx=SPACE_SM, fill="x")
+        
         self.lbl_key_header = ctk.CTkLabel(self.key_grp, text="Activity Detection Keys", font=FONT_HEADING)
         self.lbl_key_header.pack(pady=SPACE_MD)
-        self.lbl_key_desc = ctk.CTkLabel(self.key_grp, text="Keys that trigger game detection when held", font=FONT_CAPTION, text_color=COLOR_MUTED, wraplength=400)
+        
+        self.lbl_key_desc = ctk.CTkLabel(self.key_grp, text="HotSwap checks for games when these keys are held.", font=FONT_CAPTION, text_color=COLOR_MUTED, wraplength=400)
         self.lbl_key_desc.pack()
-        key_row = ctk.CTkFrame(self.key_grp, fg_color="transparent")
-        key_row.pack(pady=SPACE_SM)
-        self.entry_key = ctk.CTkEntry(key_row, placeholder_text="e.g. space, shift", width=150, font=FONT_BODY, height=32)
-        self.entry_key.pack(side="left", padx=SPACE_SM)
-        ctk.CTkButton(key_row, text="Add", width=60, font=FONT_BODY, height=32, command=self.add_detection_key).pack(side="left", padx=SPACE_XS)
-        ctk.CTkButton(key_row, text="Remove", width=70, font=FONT_BODY, height=32, fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_DARK, command=self.remove_detection_key).pack(side="left", padx=SPACE_XS)
-        self.txt_keys = ctk.CTkTextbox(self.key_grp, height=50, font=FONT_BODY, corner_radius=6)
-        self.txt_keys.pack(pady=(SPACE_SM, SPACE_MD), padx=SPACE_MD, fill="x")
-        self.txt_keys.configure(state="disabled")
+
+        # Add Button (Recorder)
+        self.btn_add_key = ctk.CTkButton(self.key_grp, text="Record New Combo", font=FONT_BODY, height=36, command=self.start_key_combo_recording)
+        self.btn_add_key.pack(pady=SPACE_SM)
+
+        # The List Area (Similar to Rules Tab)
+        self.keys_scroll = ctk.CTkScrollableFrame(self.key_grp, height=160, fg_color="transparent")
+        self.keys_scroll.pack(pady=SPACE_SM, padx=SPACE_MD, fill="x")
+        
+        # Initial populate
         self.update_key_display()
 
         ctk.CTkLabel(self.scroll_settings, text="").pack(pady=SPACE_SM)
@@ -929,35 +969,62 @@ class HotSwap(ctk.CTk):
             except Exception: pass
         threading.Thread(target=_play, daemon=True).start()
     
-    def add_detection_key(self):
-        key = self.entry_key.get().lower().strip()
-        if not key: return
-        if key in self.detection_keys:
-            self._show_entry_feedback(self.entry_key, "Already added")
-            return
-        self.detection_keys.append(key)
-        self.entry_key.delete(0, "end")
-        self.update_key_display()
-        self.save_settings()
-    def remove_detection_key(self):
-        key = self.entry_key.get().lower().strip()
-        if key in self.detection_keys:
-            self.detection_keys.remove(key)
-            self.entry_key.delete(0, "end")
-            self.update_key_display()
+    def start_key_combo_recording(self):
+        self.btn_add_key.configure(text="Press combo...", fg_color=COLOR_WARNING)
+        threading.Thread(target=self._wait_for_key_combo, daemon=True).start()
+
+    def _wait_for_key_combo(self):
+        try:
+            # read_hotkey captures the full string like "shift+w" or "ctrl+alt+p"
+            # It blocks until a combo is completed (keys released)
+            key_combo = keyboard.read_hotkey(suppress=False)
+            
+            # Sanity check to prevent empty or accidental captures
+            if key_combo and key_combo not in self.detection_keys:
+                self.detection_keys.append(key_combo)
+                self.save_settings()
+        except Exception as e:
+            print(f"Key recording failed: {e}")
+        finally:
+            # Reset button and refresh list on main thread
+            self.after(0, lambda: self.btn_add_key.configure(text="Record New Combo", fg_color=COLOR_PRIMARY))
+            self.after(0, self.update_key_display)
+
+    def remove_detection_key_item(self, key_combo):
+        if key_combo in self.detection_keys:
+            self.detection_keys.remove(key_combo)
             self.save_settings()
-        else:
-            self._show_entry_feedback(self.entry_key, "Key not found")
-    def _show_entry_feedback(self, entry, message):
-        original = entry.get()
-        entry.delete(0, "end")
-        entry.configure(placeholder_text=message)
-        self.after(1500, lambda: entry.configure(placeholder_text="e.g. space, shift"))
+            self.update_key_display()
+
     def update_key_display(self):
-        self.txt_keys.configure(state="normal")
-        self.txt_keys.delete("0.0", "end")
-        self.txt_keys.insert("end", ", ".join(self.detection_keys))
-        self.txt_keys.configure(state="disabled")
+        # Clear existing list
+        for widget in self.keys_scroll.winfo_children():
+            widget.destroy()
+
+        if not self.detection_keys:
+            ctk.CTkLabel(self.keys_scroll, text="No keys added", font=FONT_CAPTION, text_color=COLOR_MUTED).pack(pady=SPACE_MD)
+            return
+
+        # Rebuild list rows
+        for key in self.detection_keys:
+            row = ctk.CTkFrame(self.keys_scroll, fg_color=COLOR_SURFACE, corner_radius=6)
+            row.pack(pady=SPACE_XS, padx=SPACE_SM, fill="x")
+
+            # Key Label (e.g. "shift+w")
+            lbl = ctk.CTkLabel(row, text=key.upper(), font=FONT_BODY, anchor="w")
+            lbl.pack(side="left", padx=SPACE_MD, fill="x", expand=True)
+
+            # X Button
+            btn_del = ctk.CTkButton(
+                row, 
+                text="X", 
+                width=32, 
+                fg_color=COLOR_DANGER, 
+                hover_color=COLOR_DANGER_DARK, 
+                command=lambda k=key: self.remove_detection_key_item(k)
+            )
+            btn_del.pack(side="right", padx=SPACE_XS, pady=SPACE_XS)
+
     def update_timer_label(self, val):
         self.lbl_time_val.configure(text=f"{val:.1f}s")
         self.detection_threshold = val
@@ -997,7 +1064,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
     # =========================================================================
     # SUGGESTION LOGIC (UPDATED)
     # =========================================================================
-    def show_suggestion(self, exe_name):
+    def show_suggestion(self, exe_name, monitor_handle=None):
         if not self.suggestion_frame.winfo_ismapped():
             self.lbl_suggestion.configure(text=exe_name)
             self.suggestion_frame.pack(before=self.ctrl_frame, pady=SPACE_MD, padx=SPACE_MD, fill="x")
@@ -1009,7 +1076,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                     message=exe_name,
                     hotkey=self.detection_hotkey,
                     duration=10000,
-                    overlay_type=OverlayPopup.TYPE_GAME_DETECTED
+                    overlay_type=OverlayPopup.TYPE_GAME_DETECTED,
+                    monitor_handle=monitor_handle  
                 )
 
     def hide_suggestion(self):
@@ -1033,6 +1101,9 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 
     def quick_add_suggestion(self):
         """UI PART: Sets the lock IMMEDIATELY to stop the loop from fighting."""
+        current_exe, current_title, current_cls, monitor = self.get_window_info()
+        if monitor:
+            self.current_monitor_handle = monitor
         if not self.is_tracking:
             return
         if not self.obs_client:
@@ -1046,6 +1117,7 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
 
         app_to_add = self.suggested_app
 
+        # If no suggestion is pending, grab the current active window
         if not app_to_add:
             exe, _, _, _ = self.get_window_info()
             if exe and exe not in self.blacklist and exe != self.self_exe and exe != "HotSwap.exe":
@@ -1057,6 +1129,12 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         if app_to_add in self.blacklist:
             self.hide_suggestion()
             return
+            
+        # --- FIX: CHECK IF ALREADY TRACKING ---
+        # If we are already locked onto this exe, pressing F9 again should do nothing.
+        if app_to_add == self.last_injected_exe:
+            return
+        # --------------------------------------
 
         # Debounce rapid F9 spam (within 2 seconds)
         if time.time() - getattr(self, 'last_f9_time', 0) < 2:
@@ -1139,7 +1217,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             if is_active:
                 activity_timer += 0.1
                 if activity_timer > threshold:
-                    exe, title, cls, _ = self.get_window_info()
+                    # Capture the monitor handle (change '_' to 'monitor')
+                    exe, title, cls, monitor = self.get_window_info()
 
                     if not exe or exe == self.self_exe or exe == "HotSwap.exe":
                         time.sleep(0.1)
@@ -1147,20 +1226,17 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                     
                     is_whitelisted = exe in self.whitelist
                     
-                    # If app was locked/injected but NO LONGER whitelisted, clear state.
+                    # ... (keep existing locked/injected logic) ...
                     was_locked = (exe == self.locked_app)
                     was_injected = (exe == self.last_injected_exe)
 
                     if (was_locked or was_injected) and not is_whitelisted:
                         self.locked_app = None
                         self.last_injected_exe = ""
-                        # Let it fall through to suggestion
 
                     is_blacklisted = exe in self.blacklist
                     is_temp_ignored = exe in self.temp_ignore_list
 
-                    # --- STRICT CHECK ---
-                    # If it's whitelisted, NEVER suggest it.
                     if not is_whitelisted and not is_blacklisted and not is_temp_ignored:
                         self.suggested_app = exe
                         self.suggested_title = title
@@ -1170,7 +1246,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                         is_visible = self.suggestion_frame.winfo_ismapped()
                         
                         if current_text != exe or not is_visible:
-                            self.show_suggestion(exe)
+                            # Pass the monitor here!
+                            self.show_suggestion(exe, monitor_handle=monitor)
                     else:
                         if self.suggestion_frame.winfo_ismapped():
                             self.hide_suggestion()
@@ -1194,23 +1271,59 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         if not password:
             self.lbl_conn_status.configure(text="Enter password first", text_color=COLOR_WARNING)
             return
-        hosts_to_try = ['127.0.0.1', 'localhost']
+
+        hosts_to_try = ['127.0.0.1', 'localhost', '::1'] 
+        target_port = 4455 
+        
         for attempt in range(max_retries):
             for host in hosts_to_try:
-                try:
-                    self.lbl_conn_status.configure(text=f"Connecting to {host}... ({attempt + 1}/{max_retries})", text_color=COLOR_WARNING)
-                    self.obs_client = obs.ReqClient(host=host, port=4455, password=password)
-                    self.obs_events = obs.EventClient(host=host, port=4455, password=password, callback=self.on_obs_event)
-                    self._on_connect_success()
-                    return
-                except Exception as e:
-                    error_msg = str(e).lower()
-                    if "authentication failed" in error_msg:
-                        self.lbl_conn_status.configure(text="Incorrect password", text_color=COLOR_DANGER)
+                self.lbl_conn_status.configure(text=f"Try {host}:{target_port}...", text_color=COLOR_WARNING)
+                
+                sock_status = self._diagnose_socket(host, target_port)
+                
+                if sock_status == "OK":
+                    # Port is OPEN! Now try to log in.
+                    try:
+                        self.obs_client = obs.ReqClient(host=host, port=target_port, password=password)
+                        self.obs_events = obs.EventClient(host=host, port=target_port, password=password, callback=self.on_obs_event)
+                        self._on_connect_success()
                         return
-            time.sleep(1)
-        self.lbl_conn_status.configure(text="Can't reach OBS. Is it open with WebSocket enabled?", text_color=COLOR_DANGER)
+                    except Exception as e:
+                        error_msg = str(e).lower()
+                        print(f"DEBUG: Connect failed on open port: {error_msg}") # Helpful for debugging
+                        
+                        # If we found the port but failed to connect, we STOP here. 
+                        # We don't continue looking for other hosts.
+                        if "authentication" in error_msg or "password" in error_msg or "4006" in error_msg:
+                            self.lbl_conn_status.configure(text="Error: Incorrect WebSocket Password", text_color=COLOR_DANGER)
+                        else:
+                            # If it's some other error on an open port, it's usually a handshake failure (often caused by password too)
+                            self.lbl_conn_status.configure(text=f"Handshake Failed. Check Password?", text_color=COLOR_DANGER)
+                        return 
+                
+                # If sock_status is FAIL (Timeout/Refused), we move to the next host
+                continue
 
+            time.sleep(1)
+
+        # --- FINAL ERROR MESSAGE ---
+        self.lbl_conn_status.configure(
+            text=f"Connection Failed: is OBS open? Is the port correct? could not reach port: {target_port}.", 
+            text_color=COLOR_DANGER
+        )
+    
+    def _diagnose_socket(self, host, port):
+        """
+        Returns 'OK' if we can connect.
+        Returns 'FAIL' for ANY failure (Refused, Timeout, Unsupported Protocol).
+        """
+        try:
+            # timeout=1.0 is enough to know if it's open locally
+            with socket.create_connection((host, port), timeout=1.0):
+                return "OK"
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            return "FAIL"
+    
     def on_obs_event(self, event):
         try:
             if event.name == "CurrentSceneCollectionChanged":
@@ -1491,40 +1604,94 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                 self.lbl_current_app.configure(text=f"OBS Error: {str(e)[:30]}", text_color=COLOR_DANGER)
 
     def _auto_fit_source(self, source_name):
-        window_width, window_height = 0, 0
-        try:
-            hwnd = win32gui.GetForegroundWindow()
-            if hwnd:
-                rect = win32gui.GetClientRect(hwnd)
-                window_width = rect[2] - rect[0]
-                window_height = rect[3] - rect[1]
-        except Exception: pass
-        threading.Thread(target=self._auto_fit_source_delayed, args=(source_name, window_width, window_height), daemon=True).start()
+        # We don't measure yet. We wait until the delay is over to measure the REAL window.
+        threading.Thread(target=self._auto_fit_source_delayed, args=(source_name,), daemon=True).start()
 
-    def _auto_fit_source_delayed(self, source_name, window_width, window_height):
+    def _auto_fit_source_delayed(self, source_name):
         try:
-            time.sleep(1.5)
+            # 1. Wait for Splash Screen to finish
+            time.sleep(3.5)
+            
+            if not self.obs_client: 
+                return
+            
+            # 2. Get the CURRENT active window info
+            hwnd = win32gui.GetForegroundWindow()
+            if not hwnd: return
+            
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            try:
+                current_exe = psutil.Process(pid).name()
+            except:
+                return
+
+            # 3. CRITICAL CHECK: Are we still looking at the tracked game?
+            # If the user Alt-Tabbed to Chrome, current_exe will be "chrome.exe".
+            # We compare it to what HotSwap THINKS it injected ("Game.exe").
+            if current_exe != self.last_injected_exe:
+                # User is doing something else; don't annoy them with black bar warnings.
+                return
+
+            # 4. Measure the window NOW
+            rect = win32gui.GetClientRect(hwnd)
+            window_width = rect[2] - rect[0]
+            window_height = rect[3] - rect[1]
+            
+            # Get monitor for popup positioning
+            monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONULL)
+
+            # Ignore tiny launchers
+            if window_width < 800 or window_height < 600:
+                return
+
+            # 5. Check OBS
             current_scene = self.obs_client.get_current_program_scene().current_program_scene_name
             items = self.obs_client.get_scene_item_list(current_scene).scene_items
             target_item = next((i for i in items if i['sourceName'] == source_name), None)
+            
             if target_item:
                 item_id = target_item['sceneItemId']
                 res = self.obs_client.get_video_settings()
-                new_transform = {"boundsAlignment": 0, "boundsWidth": res.base_width, "boundsHeight": res.base_height, "boundsType": "OBS_BOUNDS_SCALE_INNER"}
+                
+                new_transform = {
+                    "boundsAlignment": 0, 
+                    "boundsWidth": res.base_width, 
+                    "boundsHeight": res.base_height, 
+                    "boundsType": "OBS_BOUNDS_SCALE_INNER"
+                }
                 self.obs_client.set_scene_item_transform(current_scene, item_id, new_transform)
+
                 if window_width > 0 and window_height > 0:
                     canvas_ar = res.base_width / res.base_height
                     source_ar = window_width / window_height
                     diff = abs(canvas_ar - source_ar)
+                    
                     size_match = (window_width == res.base_width and window_height == res.base_height)
+                    
                     if diff > 0.01 and not size_match:
                         if diff > 0.1:
                             issue_type = "Ultrawide" if source_ar > canvas_ar else "Boxy (4:3)"
                         else:
                             issue_type = f"{window_width}x{window_height} (black bars possible)"
+                        
                         self.lbl_alert.configure(text=f"Resolution: {issue_type}", text_color=COLOR_WARNING)
-                        if self.popup_notifications_enabled:
-                            self.overlay.show(title="Aspect Ratio Warning", message=f"Game is {issue_type}", hotkey="", duration=6000, overlay_type=OverlayPopup.TYPE_ASPECT_RATIO)
+                        
+                        # --- FIX: CHECK PER-GAME HISTORY ---
+                        # Get the history for THIS specific game (default to empty set if new)
+                        game_history = self.session_alerts.get(self.last_injected_exe, set())
+                        
+                        if "aspect_ratio" not in game_history and self.popup_notifications_enabled:
+                            game_history.add("aspect_ratio") 
+                            self.session_alerts[self.last_injected_exe] = game_history # Save it back
+                            
+                            self.overlay.show(
+                                title="Aspect Ratio Warning", 
+                                message=f"Game is {issue_type}", 
+                                hotkey="", 
+                                duration=6000, 
+                                overlay_type=OverlayPopup.TYPE_ASPECT_RATIO,
+                                monitor_handle=monitor 
+                            )
         except Exception: pass
 
     def _validate_hook(self, source_name):
@@ -1539,7 +1706,14 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         # Only warn after 3 failed checks (6 seconds total)
         self.lbl_current_app.configure(text="Capture may have failed - try Admin?", text_color=COLOR_WARNING)
         if self.popup_notifications_enabled:
-            self.overlay.show(title="Capture Warning", message="Game may need Administrator mode", hotkey="", duration=6000, overlay_type=OverlayPopup.TYPE_CAPTURE_FAILED)
+            self.overlay.show(
+                title="Capture Warning", 
+                message="Game may need Administrator mode", 
+                hotkey="", 
+                duration=6000, 
+                overlay_type=OverlayPopup.TYPE_CAPTURE_FAILED,
+                monitor_handle=self.current_monitor_handle # <--- Pass Saved Handle
+            )
 
     def tracking_loop(self):
         """Main tracking loop with Strict Monitor Checking."""
@@ -1549,22 +1723,44 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
             if check_counter % 10 == 0: self.check_disk_space()
             check_counter += 1
 
-            exe, title, cls, _ = self.get_window_info()
+            # Get the monitor handle here
+            exe, title, cls, monitor = self.get_window_info()
 
             if exe:
                 if exe == self.self_exe or exe == "HotSwap.exe":
                     time.sleep(1.5)
                     continue
 
+                # --- SAVE MONITOR HANDLE ---
+                # If this is a valid app (whitelisted or blacklisted), we want to know its monitor
+                # so that even if it's ignored, we know where the user is looking.
+                if monitor:
+                    self.current_monitor_handle = monitor
+
                 # --- PERMISSION CHECKS ---
                 is_whitelisted = exe in self.whitelist
                 is_blacklisted = exe in self.blacklist
                 is_temp_ignored = exe in self.temp_ignore_list
 
-                if (exe.lower() in [g.lower() for g in self.anticheat_games] and not self.anticheat_suggested and self.game_detection_enabled):
-                    self.anticheat_suggested = True
-                    if self.popup_notifications_enabled:
-                        self.overlay.show(title="Anti-Cheat Detected", message=f"{exe}\nConsider enabling Safe Mode", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_ASPECT_RATIO)
+                # --- FIX: USE PER-GAME HISTORY ---
+                if (exe.lower() in [g.lower() for g in self.anticheat_games] and self.game_detection_enabled):
+                    # Get history for THIS exe
+                    game_history = self.session_alerts.get(exe, set())
+                    
+                    if "anticheat" not in game_history:
+                        game_history.add("anticheat")
+                        self.session_alerts[exe] = game_history # Save it back
+                        
+                        if self.popup_notifications_enabled:
+                            self.overlay.show(
+                                title="Anti-Cheat Detected", 
+                                message=f"{exe}\nConsider enabling Safe Mode", 
+                                hotkey="", 
+                                duration=8000, 
+                                overlay_type=OverlayPopup.TYPE_ASPECT_RATIO,
+                                monitor_handle=self.current_monitor_handle
+                            )
+
 
                 allowed = is_whitelisted
                 if not allowed and self.last_injected_exe: self.last_injected_exe = ""
@@ -1613,8 +1809,14 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
                 self.lbl_alert.configure(text=f"Dropped {diff} frames!", text_color=COLOR_DANGER)
                 self.status_frame.configure(fg_color=COLOR_DANGER_DARK)
                 if not recently_switched and not alert_cooldown and self.popup_notifications_enabled:
-                    self.overlay.show(title="Performance Warning", message=f"Dropped {diff} frames!", hotkey="", duration=8000, overlay_type=OverlayPopup.TYPE_FRAME_DROP)
-                    self.last_alert_time = now
+                    self.overlay.show(
+                        title="Performance Warning", 
+                        message=f"Dropped {diff} frames!", 
+                        hotkey="", 
+                        duration=8000, 
+                        overlay_type=OverlayPopup.TYPE_FRAME_DROP,
+                        monitor_handle=self.current_monitor_handle # <--- Pass Saved Handle
+                    )
             elif diff > 0:
                 self.lbl_alert.configure(text=f"Minor stutter ({diff} frames)", text_color=COLOR_WARNING)
                 self.status_frame.configure(fg_color="transparent")
@@ -1630,14 +1832,25 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         try:
             hwnd = win32gui.GetForegroundWindow()
             if hwnd == 0: return None, None, None, None
+            
+            # FIX: Get Monitor FIRST, because it doesn't require Admin rights.
+            # Even if we can't read the EXE name, we might still want the monitor handle later.
+            monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONULL)
+
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             exe_name = psutil.Process(pid).name()
             window_title = win32gui.GetWindowText(hwnd)
             class_name = win32gui.GetClassName(hwnd)
-            monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONULL)
+            
             return exe_name, window_title, class_name, monitor
-        except (psutil.NoSuchProcess, psutil.AccessDenied): return None, None, None, None
-        except Exception: return None, None, None, None
+            
+        except (psutil.NoSuchProcess, psutil.AccessDenied): 
+            # If we can't read the EXE, we still return None for the name, 
+            # but we could technically return the monitor if we wanted to. 
+            # For now, failing safely is fine.
+            return None, None, None, None
+        except Exception: 
+            return None, None, None, None
 
     def scan_running_apps(self, combo_widget):
         apps = []

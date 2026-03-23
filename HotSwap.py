@@ -1065,6 +1065,8 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
     # SUGGESTION LOGIC (UPDATED)
     # =========================================================================
     def show_suggestion(self, exe_name, monitor_handle=None):
+        if not self.is_tracking or not self.switch_track.get():
+            return
         if not self.suggestion_frame.winfo_ismapped():
             self.lbl_suggestion.configure(text=exe_name)
             self.suggestion_frame.pack(before=self.ctrl_frame, pady=SPACE_MD, padx=SPACE_MD, fill="x")
@@ -1203,6 +1205,13 @@ function script_load(settings) obs.obs_frontend_add_event_callback(on_event) end
         activity_timer = 0
 
         while self.game_detection_enabled:
+            if not self.is_tracking or not self.switch_track.get():
+                activity_timer = 0
+                if self.suggestion_frame.winfo_ismapped():
+                    self.hide_suggestion()
+                time.sleep(0.1)
+                continue
+
             threshold = self.detection_threshold
             is_active = False
 
